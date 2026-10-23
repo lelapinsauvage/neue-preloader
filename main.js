@@ -155,6 +155,9 @@ const page = document.getElementById('page'), hud = document.getElementById('hud
 const hudN = document.getElementById('hud-n'), hudL = document.getElementById('hud-l'), fpsEl = document.getElementById('fps');
 let clock = 0, last = performance.now(), lastDraw = 0, frames = 0, fpsT = performance.now(), endedAt = null;
 function replay() { clock = 0; endedAt = null; document.body.classList.remove('done'); }
+// pause freezes the exact frame on screen (it used to jump to the slider's position, which was 0 = black)
+const pauseBtn = document.getElementById('pause');
+function setPause(v) { P.paused = v; P.scrub = Math.min(1, clock / (total() + .2)); scrubCtl?.updateDisplay(); }
 
 function setUniforms(st) {
   gl.uniform2f(U('uRes'), canvas.width, canvas.height); gl.uniform2f(U('uMouse'), m[0], m[1]);
@@ -179,9 +182,8 @@ function tick(now) {
   if (cap && now - lastDraw < 1000 / cap - 1) return;
   const dt = Math.min(.1, (now - last) / 1000); last = now; lastDraw = now;
   if (!P.paused && texReady) clock += dt * P.speed;
-  if (P.paused) clock = P.scrub * (total() + .2);
   // loop: replay after a short look at the page
-  if (clock > total() + .05) {
+  if (clock > total() + .05 && !P.paused) {
     if (endedAt == null) { endedAt = now; document.body.classList.add('done'); }
     if (P.loop && !P.paused && now - endedAt > P.loopPause * 1000) replay();
   }
@@ -197,7 +199,8 @@ function tick(now) {
   page.style.transform = `scale(${1 + P.landScale * (1 - st.land)}) rotate(${P.landRotate * (1 - st.land)}deg)`;
   // fps
   frames++; if (now - fpsT > 500) { fpsEl.textContent = `${Math.round(frames * 1000 / (now - fpsT))} fps`; frames = 0; fpsT = now; }
-  if (P.paused) scrubCtl?.updateDisplay();
+  if (!P.paused) { P.scrub = Math.min(1, clock / (total() + .2)); scrubCtl?.updateDisplay(); }
+  pauseBtn.textContent = P.paused ? 'Play' : 'Pause';
 }
 requestAnimationFrame(tick);
 
@@ -210,8 +213,8 @@ gui.onChange(save);
 const play = gui.addFolder('Playback');
 play.add({ replay }, 'replay').name('Replay (R)');
 play.add(P, 'speed', .1, 3, .05).name('Playback speed');
-play.add(P, 'paused').name('Pause (Space)').listen();
-let scrubCtl = play.add(P, 'scrub', 0, 1, .001).name('Scrub (when paused)').onChange(() => { P.paused = true; });
+play.add(P, 'paused').name('Pause (Space)').listen().onChange(setPause);
+let scrubCtl = play.add(P, 'scrub', 0, 1, .001).name('Scrub (pauses)').onChange((v) => { setPause(true); clock = v * (total() + .2); endedAt = null; document.body.classList.toggle('done', clock > total() + .05); });
 play.add(P, 'loop').name('Loop');
 play.add(P, 'loopPause', 0, 5, .1).name('Pause on the page (s)');
 play.add(P, 'showHud').name('Show logo + counter');
@@ -293,10 +296,13 @@ out.add({ json() { navigator.clipboard.writeText(JSON.stringify(P, null, 2)); } 
 out.add({ reset() { Object.assign(P, structuredClone(DEFAULTS)); gui.controllersRecursive().forEach((c) => c.updateDisplay()); fit(); save(); replay(); } }, 'reset').name('Reset to the picked version');
 [tim, perf, grid, tun, near, col, rev].forEach((f) => f.close());
 
-document.getElementById('replay').onclick = replay;
+document.getElementById('replay').onclick = () => { replay(); setPause(false); };
+pauseBtn.onclick = () => setPause(!P.paused);
 addEventListener('keydown', (e) => {
   if (e.target.closest?.('input')) return;
   if (e.key === 'h' || e.key === 'H') document.body.classList.toggle('nogui');
   if (e.key === 'r' || e.key === 'R') replay();
-  if (e.key === ' ') { e.preventDefault(); P.paused = !P.paused; if (P.paused) P.scrub = Math.min(1, clock / (total() + .2)); }
+  if (e.key === ' ') { e.preventDefault(); setPause(!P.paused); }
+  if (P.paused && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { clock = Math.max(0, clock + (e.key === 'ArrowRight' ? 1 : -1) / 60); P.scrub = Math.min(1, clock / (total() + .2)); scrubCtl.updateDisplay(); }
 });
+canvas.addEventListener('click', () => setPause(!P.paused));   // click the tunnel to pause / play

@@ -13,7 +13,7 @@ Every value is live in the control panel:
 - the four colour stops;
 - the reveal.
 
-**Shortcuts:** H hides the controls, R replays, Space pauses. While paused, the Scrub slider moves through the timeline.
+**Shortcuts:** H hides the controls, R replays, and Space (or clicking the tunnel, or the Pause button) pauses on the exact frame. While paused, ← → step one frame and the Scrub slider moves through the timeline.
 
 **Sharing:** your settings are saved in the URL. Use "Copy link with these settings" to share a version, or "Copy settings as JSON" to send exact values.
 

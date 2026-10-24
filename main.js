@@ -32,7 +32,7 @@ const NICCOLO = { cell: 22, levels: 9, holeRound: 0.33, tileLift: 1.77, gammaMin
   c0: '#736383', c1: '#6e5f7f', c2: '#716181', c3: '#37a056', stop1: 0.49, stop2: 0.74, rampScale: 0.59, rampCap: 0.72,
   hole: '#6f6080', vignette: 1, grain: 0,
   // timing for V1/V2 (Karim 24 Oct: no pause at the end, the reveal follows the fall)
-  exit: 2.3, revealStart: 0.0, revealSpread: 0.45 };
+  load: 3, exit: 1.2, v0: 2, vmax: 30, revealStart: 0.0, revealSpread: 0.45 };
 // V2 (24 Oct): V1 with yesterday's smaller squares
 const V2 = { ...NICCOLO, cell: 15 };
 const VIOLET = Object.fromEntries(Object.keys(NICCOLO).map((k) => [k, DEFAULTS[k]]));
@@ -245,8 +245,8 @@ play.add(P, 'showPage').name('Show the page underneath');
 const tim = gui.addFolder('Timing & speed');
 tim.add(P, 'load', .5, 10, .1).name('Loading time (s)');
 tim.add(P, 'exit', .5, 6, .1).name('Pull-in time (s)');
-tim.add(P, 'v0', .05, 2, .01).name('Cruise speed');
-tim.add(P, 'vmax', 1, 30, .1).name('Top speed');
+tim.add(P, 'v0', .05, 6, .01).name('Cruise speed');
+tim.add(P, 'vmax', 1, 80, .1).name('Top speed');
 
 const perf = gui.addFolder('Performance');
 perf.add(P, 'fpsCap', ['Off', '30', '60', '120']).name('FPS cap');

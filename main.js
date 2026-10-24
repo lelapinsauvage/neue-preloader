@@ -31,9 +31,11 @@ const DEFAULTS = {
 const NICCOLO = { cell: 22, levels: 9, holeRound: 0.33, tileLift: 1.77, gammaMin: 0.15, gammaMax: 0.6, mouse: 0.35, breath: 0.14,
   c0: '#736383', c1: '#6e5f7f', c2: '#716181', c3: '#37a056', stop1: 0.49, stop2: 0.74, rampScale: 0.59, rampCap: 0.72,
   hole: '#6f6080', vignette: 1, grain: 0 };
+// V2 (24 Oct): V1 with yesterday's smaller squares
+const V2 = { ...NICCOLO, cell: 15 };
 const VIOLET = Object.fromEntries(Object.keys(NICCOLO).map((k) => [k, DEFAULTS[k]]));
 const P = structuredClone(DEFAULTS);
-Object.assign(P, NICCOLO);
+Object.assign(P, new URLSearchParams(location.search).get('v') === '2' ? V2 : NICCOLO);
 try { Object.assign(P, JSON.parse(decodeURIComponent(location.hash.slice(1)) || '{}')); } catch {}
 
 // ---------------------------------------------------------------- shader
@@ -220,7 +222,8 @@ gui.onChange(save);
 
 { const pre = gui.addFolder('Presets');
   const apply = (o) => { Object.assign(P, o); gui.controllersRecursive().forEach((c) => c.updateDisplay()); fit(); save?.(); };
-  pre.add({ n() { apply(NICCOLO); } }, 'n').name('Niccolò · 24 Oct (colours + glyph)');
+  pre.add({ n() { apply(NICCOLO); } }, 'n').name('V1 · Niccolò 24 Oct (22 px squares)');
+  pre.add({ n2() { apply(V2); } }, 'n2').name('V2 · smaller squares (15 px)');
   pre.add({ v() { apply(VIOLET); } }, 'v').name('Nebula violet (yesterday)'); }
 const play = gui.addFolder('Playback');
 play.add({ replay }, 'replay').name('Replay (R)');

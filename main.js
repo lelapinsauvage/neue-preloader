@@ -27,17 +27,20 @@ const DEFAULTS = {
   // reveal
   revealStart: 0.62, revealSpread: 0.3, revealRagged: 0.35, landScale: 0.14, landRotate: -7,
 };
-// Niccolò's values (24 Oct): grid & glyph + colour
-const NICCOLO = { cell: 22, levels: 9, holeRound: 0.33, tileLift: 1.77, gammaMin: 0.15, gammaMax: 0.6, mouse: 0.35, breath: 0.14,
+// 24 Oct: one timing for every version (Karim: no pause, the reveal follows the fall, faster)
+const TIMING = { load: 3, exit: 1.2, v0: 2, vmax: 30, revealStart: 0.0, revealSpread: 0.45 };
+// v1 · OG: yesterday's Nebula violet look, with the new timing
+const OG = { ...TIMING };
+// v2 · Niccolò's 24 Oct grid, glyph and colour values (22 px squares)
+const NICCOLO = { ...TIMING, cell: 22, levels: 9, holeRound: 0.33, tileLift: 1.77, gammaMin: 0.15, gammaMax: 0.6, mouse: 0.35, breath: 0.14,
   c0: '#736383', c1: '#6e5f7f', c2: '#716181', c3: '#37a056', stop1: 0.49, stop2: 0.74, rampScale: 0.59, rampCap: 0.72,
-  hole: '#6f6080', vignette: 1, grain: 0,
-  // timing for V1/V2 (Karim 24 Oct: no pause at the end, the reveal follows the fall)
-  load: 3, exit: 1.2, v0: 2, vmax: 30, revealStart: 0.0, revealSpread: 0.45 };
-// V2 (24 Oct): V1 with yesterday's smaller squares
-const V2 = { ...NICCOLO, cell: 15 };
-const VIOLET = Object.fromEntries(Object.keys(NICCOLO).map((k) => [k, DEFAULTS[k]]));
+  hole: '#6f6080', vignette: 1, grain: 0 };
+// v3 · v2 with the smaller squares
+const V3 = { ...NICCOLO, cell: 15 };
+const LOOK = Object.fromEntries(Object.keys(NICCOLO).map((k) => [k, DEFAULTS[k]]));   // resets the look keys before a preset
+const VERSIONS = { 1: OG, 2: NICCOLO, 3: V3 };
 const P = structuredClone(DEFAULTS);
-Object.assign(P, new URLSearchParams(location.search).get('v') === '2' ? V2 : NICCOLO);
+Object.assign(P, VERSIONS[new URLSearchParams(location.search).get('v')] || OG);
 try { Object.assign(P, JSON.parse(decodeURIComponent(location.hash.slice(1)) || '{}')); } catch {}
 
 // ---------------------------------------------------------------- shader
@@ -229,9 +232,9 @@ gui.onChange(save);
 
 { const pre = gui.addFolder('Presets');
   const apply = (o) => { Object.assign(P, o); gui.controllersRecursive().forEach((c) => c.updateDisplay()); fit(); save?.(); };
-  pre.add({ n() { apply(NICCOLO); } }, 'n').name('V1 · Niccolò 24 Oct (22 px squares)');
-  pre.add({ n2() { apply(V2); } }, 'n2').name('V2 · smaller squares (15 px)');
-  pre.add({ v() { apply(VIOLET); } }, 'v').name('Nebula violet (yesterday)'); }
+  pre.add({ a() { apply({ ...LOOK, ...OG }); } }, 'a').name('v1 · OG Nebula violet (?v=1)');
+  pre.add({ b() { apply({ ...LOOK, ...NICCOLO }); } }, 'b').name('v2 · Niccolò colours, 22 px (?v=2)');
+  pre.add({ c() { apply({ ...LOOK, ...V3 }); } }, 'c').name('v3 · Niccolò colours, 15 px (?v=3)'); }
 const play = gui.addFolder('Playback');
 play.add({ replay }, 'replay').name('Replay (R)');
 play.add(P, 'speed', .1, 3, .05).name('Playback speed');

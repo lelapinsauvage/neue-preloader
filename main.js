@@ -32,7 +32,7 @@ const NICCOLO = { cell: 22, levels: 9, holeRound: 0.33, tileLift: 1.77, gammaMin
   c0: '#736383', c1: '#6e5f7f', c2: '#716181', c3: '#37a056', stop1: 0.49, stop2: 0.74, rampScale: 0.59, rampCap: 0.72,
   hole: '#6f6080', vignette: 1, grain: 0,
   // timing for V1/V2 (Karim 24 Oct: no pause at the end, the reveal follows the fall)
-  exit: 1.5, revealStart: 0.35, revealSpread: 0.45 };
+  exit: 2.3, revealStart: 0.0, revealSpread: 0.45 };
 // V2 (24 Oct): V1 with yesterday's smaller squares
 const V2 = { ...NICCOLO, cell: 15 };
 const VIOLET = Object.fromEntries(Object.keys(NICCOLO).map((k) => [k, DEFAULTS[k]]));
@@ -51,7 +51,7 @@ uniform float uDepth, uTwistBase, uTwistLoad, uTwistExit, uTwistAmt, uSpinAmt, u
 uniform float uContrast, uBright, uFlicker, uEye, uPersp, uPressure, uStreak; uniform int uStreakN;
 uniform float uNearOn, uNearSize, uNearZoom, uNearThr, uNearAmt, uNearOpacity;
 uniform vec3 uC0, uC1, uC2, uC3, uHole; uniform float uStop1, uStop2, uRampScale, uRampCap, uVignette, uGrain;
-uniform float uRevStart, uRevSpread, uRevRag;
+uniform float uRevStart, uRevSpread, uRevRag, uFallN;
 out vec4 o;
 float sdRound(vec2 p, vec2 b, float r){ vec2 q = abs(p) - b + r; return length(max(q,0.)) + min(max(q.x,q.y),0.) - r; }
 float hash(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
@@ -92,7 +92,7 @@ void main(){
   vec2 q = (cc - uRes*.5) / md;
   float r = length(q);
   // the twist winds up hard at the end: the pull-in wrings the tunnel like a drain
-  float twist = uTwistBase + uTwistLoad * easeOut(uLoad) + uTwistExit * min(pow(ex / max(uRevStart, .05), 2.), 2.2) + .02 * sin(uTime * .5);
+  float twist = uTwistBase + uTwistLoad * easeOut(uLoad) + uTwistExit * 1.6 * uFallN + .02 * sin(uTime * .5);
   float lum = 0., n = 0.;
   for (int k = 0; k < 8; k++) { if (k >= uStreakN) break; lum += nebula(q * (1. + float(k) * uStreak * uSpeed), twist); n += 1.; }
   lum /= max(n, 1.);
@@ -104,8 +104,8 @@ void main(){
   float g = pow(mix(.2, 2.2, mix(uGMin, uGMax, gm)), 2.2);
   float order = r * .9 + hash(cid) * uRevRag;
   // the reveal follows the fall's momentum: it starts as soon as you're in and accelerates (squared) instead of crawling
-  float rt = clamp((ex - uRevStart) / max(1. - uRevStart, .01), 0., 1.);
-  float open = smoothstep(0., .12, rt * rt * (uRevSpread * 1.25 + .12) - order * uRevSpread);   // the farthest cell (order ≈ 1.2) opens exactly at the end
+  float rt = clamp((uFallN - uRevStart) / max(1. - uRevStart, .01), 0., 1.);
+  float open = smoothstep(0., .12, rt * (uRevSpread * 1.25 + .12) - order * uRevSpread);   // the farthest cell (order ≈ 1.2) opens exactly at the end
   vec3 c = waffle(local, lum, ramp(clamp(lum * uRampScale, 0., uRampCap)), cs, g);
   if (uNearOn > .5) {
     float cs3 = cs * uNearSize;
@@ -158,9 +158,12 @@ function journey(s) {
   const tau = Math.max(0, s - P.load), a = Math.min(s, P.load) * P.v0;
   const fall = P.v0 * (Math.exp(k * Math.min(tau, P.exit)) - 1) / k + Math.max(0, tau - P.exit) * P.vmax;
   const v = tau > 0 ? P.v0 * Math.exp(k * Math.min(tau, P.exit)) : P.v0;
-  const e = Math.min(1, tau / P.exit), land = Math.max(0, Math.min(1, (e - P.revealStart) / Math.max(1 - P.revealStart, .01)));
-  return { load: Math.max(0, loadAt(s)), exit: e, dive: a + fall, spin: (a + fall) * 1.15 + fall * fall * .06 + P.suck * Math.min(Math.pow(e / Math.max(P.revealStart, .05), 2), 2.2) * 6,
-    speed: (v - P.v0) / Math.max(P.vmax - P.v0, .01), land: 1 - Math.pow(1 - land, 3) };
+  const e = Math.min(1, tau / P.exit);
+  // the tunnel's momentum, 0→1 over the pull-in: (e^(k·t) − 1) / (e^(k·T) − 1), the same curve as the fall itself
+  const fallN = tau > 0 ? (Math.exp(k * Math.min(tau, P.exit)) - 1) / (Math.exp(k * P.exit) - 1) : 0;
+  const land = Math.max(0, Math.min(1, (fallN - P.revealStart) / Math.max(1 - P.revealStart, .01)));
+  return { load: Math.max(0, loadAt(s)), exit: e, dive: a + fall, spin: (a + fall) * 1.15 + fall * fall * .06 + P.suck * 1.6 * fallN * 6,
+    speed: (v - P.v0) / Math.max(P.vmax - P.v0, .01), fallN, land: 1 - Math.pow(1 - land, 3) };
 }
 const total = () => P.load + P.exit;
 
@@ -174,12 +177,12 @@ function setPause(v) { P.paused = v; P.scrub = Math.min(1, clock / (total() + .2
 
 function setUniforms(st) {
   gl.uniform2f(U('uRes'), canvas.width, canvas.height); gl.uniform2f(U('uMouse'), m[0], m[1]);
-  gl.uniform1f(U('uTime'), clock); gl.uniform1f(U('uLoad'), st.load); gl.uniform1f(U('uExit'), st.exit); gl.uniform1f(U('uDpr'), dpr);
+  gl.uniform1f(U('uTime'), clock); gl.uniform1f(U('uLoad'), st.load); gl.uniform1f(U('uExit'), st.exit); gl.uniform1f(U('uFallN'), st.fallN); gl.uniform1f(U('uDpr'), dpr);
   gl.uniform1f(U('uDive'), st.dive); gl.uniform1f(U('uSpin'), st.spin); gl.uniform1f(U('uSpeed'), st.speed);
   const f = (n, v) => gl.uniform1f(U(n), v);
   f('uCell', P.cell); f('uLevels', P.levels); f('uHoleRound', P.holeRound); f('uTileLift', P.tileLift);
   f('uGMin', P.gammaMin); f('uGMax', P.gammaMax); f('uMouseAmt', P.mouse); f('uBreath', P.breath);
-  const ex2 = Math.min(1, st.exit / Math.max(P.revealStart, .05)), ee = ex2 * ex2 * (3 - 2 * ex2);
+  const ee = st.fallN;   // depth, twist, spin and the white all ride the same momentum
   f('uDepth', P.depth * (1 + P.depthGain * (.35 * st.load + ee))); f('uTwistBase', P.twistBase); f('uTwistLoad', P.twistLoad); f('uTwistExit', P.twistExit); f('uTwistAmt', P.twistAmt); f('uSpinAmt', P.spin);
   f('uTravel', P.travel); f('uBand', P.band); f('uBandAmp', P.bandAmp); f('uBandFreq', P.bandFreq); f('uFog', P.fog);
   f('uNebGamma', P.nebGamma); f('uNebGain', P.nebGain); f('uContrast', P.contrast); f('uBright', P.brightness); f('uFlicker', P.flicker);

@@ -15,7 +15,7 @@ const DEFAULTS = {
   // grid & glyph
   cell: 15, levels: 9, holeRound: 0.42, tileLift: 1.4, gammaMin: 0.15, gammaMax: 0.6, mouse: 0.5, breath: 0.08,
   // tunnel
-  depth: 0.32, twistBase: 0.55, twistLoad: 0.35, twistAmt: 0.55, spin: 0.12, travel: 1.4,
+  depth: 0.32, depthGain: 1.6, twistBase: 0.55, twistLoad: 0.35, twistExit: 3.2, twistAmt: 0.55, spin: 0.12, suck: 2.4, travel: 1.4,
   band: 0.4, bandAmp: 0.32, bandFreq: 0.55, fog: 0.06, nebGamma: 0.8, nebGain: 1.5,
   contrast: 1.3, brightness: 0.9, flicker: 0.08, eye: 0.2, perspective: 0.35, pressure: 0.35,
   streak: 0.045, streakSamples: 4,
@@ -27,7 +27,13 @@ const DEFAULTS = {
   // reveal
   revealStart: 0.62, revealSpread: 0.3, revealRagged: 0.35, landScale: 0.14, landRotate: -7,
 };
+// Niccolò's values (24 Oct): grid & glyph + colour
+const NICCOLO = { cell: 22, levels: 9, holeRound: 0.33, tileLift: 1.77, gammaMin: 0.15, gammaMax: 0.6, mouse: 0.35, breath: 0.14,
+  c0: '#736383', c1: '#6e5f7f', c2: '#716181', c3: '#37a056', stop1: 0.49, stop2: 0.74, rampScale: 0.59, rampCap: 0.72,
+  hole: '#6f6080', vignette: 1, grain: 0 };
+const VIOLET = Object.fromEntries(Object.keys(NICCOLO).map((k) => [k, DEFAULTS[k]]));
 const P = structuredClone(DEFAULTS);
+Object.assign(P, NICCOLO);
 try { Object.assign(P, JSON.parse(decodeURIComponent(location.hash.slice(1)) || '{}')); } catch {}
 
 // ---------------------------------------------------------------- shader
@@ -37,7 +43,7 @@ precision highp float;
 uniform vec2 uRes, uMouse; uniform float uTime, uLoad, uExit, uDpr, uDive, uSpin, uSpeed;
 uniform sampler2D uTex;
 uniform float uCell, uLevels, uHoleRound, uTileLift, uGMin, uGMax, uMouseAmt, uBreath;
-uniform float uDepth, uTwistBase, uTwistLoad, uTwistAmt, uSpinAmt, uTravel, uBand, uBandAmp, uBandFreq, uFog, uNebGamma, uNebGain;
+uniform float uDepth, uTwistBase, uTwistLoad, uTwistExit, uTwistAmt, uSpinAmt, uTravel, uBand, uBandAmp, uBandFreq, uFog, uNebGamma, uNebGain;
 uniform float uContrast, uBright, uFlicker, uEye, uPersp, uPressure, uStreak; uniform int uStreakN;
 uniform float uNearOn, uNearSize, uNearZoom, uNearThr, uNearAmt, uNearOpacity;
 uniform vec3 uC0, uC1, uC2, uC3, uHole; uniform float uStop1, uStop2, uRampScale, uRampCap, uVignette, uGrain;
@@ -81,7 +87,8 @@ void main(){
   float md = min(uRes.x, uRes.y);
   vec2 q = (cc - uRes*.5) / md;
   float r = length(q);
-  float twist = uTwistBase + uTwistLoad * easeOut(uLoad) + .02 * sin(uTime * .5);
+  // the twist winds up hard at the end: the pull-in wrings the tunnel like a drain
+  float twist = uTwistBase + uTwistLoad * easeOut(uLoad) + uTwistExit * pow(clamp(ex / max(uRevStart, .05), 0., 1.), 2.) + .02 * sin(uTime * .5);
   float lum = 0., n = 0.;
   for (int k = 0; k < 8; k++) { if (k >= uStreakN) break; lum += nebula(q * (1. + float(k) * uStreak * uSpeed), twist); n += 1.; }
   lum /= max(n, 1.);
@@ -146,7 +153,7 @@ function journey(s) {
   const fall = P.v0 * (Math.exp(k * Math.min(tau, P.exit)) - 1) / k + Math.max(0, tau - P.exit) * P.vmax;
   const v = tau > 0 ? P.v0 * Math.exp(k * Math.min(tau, P.exit)) : P.v0;
   const e = Math.min(1, tau / P.exit), land = Math.max(0, Math.min(1, (e - .62) / .38));
-  return { load: Math.max(0, loadAt(s)), exit: e, dive: a + fall, spin: (a + fall) * 1.15 + fall * fall * .06,
+  return { load: Math.max(0, loadAt(s)), exit: e, dive: a + fall, spin: (a + fall) * 1.15 + fall * fall * .06 + P.suck * Math.pow(Math.min(1, e / Math.max(P.revealStart, .05)), 2) * 6,
     speed: (v - P.v0) / Math.max(P.vmax - P.v0, .01), land: 1 - Math.pow(1 - land, 3) };
 }
 const total = () => P.load + P.exit;
@@ -166,7 +173,8 @@ function setUniforms(st) {
   const f = (n, v) => gl.uniform1f(U(n), v);
   f('uCell', P.cell); f('uLevels', P.levels); f('uHoleRound', P.holeRound); f('uTileLift', P.tileLift);
   f('uGMin', P.gammaMin); f('uGMax', P.gammaMax); f('uMouseAmt', P.mouse); f('uBreath', P.breath);
-  f('uDepth', P.depth); f('uTwistBase', P.twistBase); f('uTwistLoad', P.twistLoad); f('uTwistAmt', P.twistAmt); f('uSpinAmt', P.spin);
+  const ex2 = Math.min(1, st.exit / Math.max(P.revealStart, .05)), ee = ex2 * ex2 * (3 - 2 * ex2);
+  f('uDepth', P.depth * (1 + P.depthGain * (.35 * st.load + ee))); f('uTwistBase', P.twistBase); f('uTwistLoad', P.twistLoad); f('uTwistExit', P.twistExit); f('uTwistAmt', P.twistAmt); f('uSpinAmt', P.spin);
   f('uTravel', P.travel); f('uBand', P.band); f('uBandAmp', P.bandAmp); f('uBandFreq', P.bandFreq); f('uFog', P.fog);
   f('uNebGamma', P.nebGamma); f('uNebGain', P.nebGain); f('uContrast', P.contrast); f('uBright', P.brightness); f('uFlicker', P.flicker);
   f('uEye', P.eye); f('uPersp', P.perspective); f('uPressure', P.pressure); f('uStreak', P.streak); gl.uniform1i(U('uStreakN'), P.streakSamples);
@@ -210,6 +218,10 @@ const save = () => { history.replaceState(null, '', '#' + encodeURIComponent(JSO
 const diff = () => Object.fromEntries(Object.entries(P).filter(([k, v]) => v !== DEFAULTS[k] && !['paused', 'scrub'].includes(k)));
 gui.onChange(save);
 
+{ const pre = gui.addFolder('Presets');
+  const apply = (o) => { Object.assign(P, o); gui.controllersRecursive().forEach((c) => c.updateDisplay()); fit(); save?.(); };
+  pre.add({ n() { apply(NICCOLO); } }, 'n').name('Niccolò · 24 Oct (colours + glyph)');
+  pre.add({ v() { apply(VIOLET); } }, 'v').name('Nebula violet (yesterday)'); }
 const play = gui.addFolder('Playback');
 play.add({ replay }, 'replay').name('Replay (R)');
 play.add(P, 'speed', .1, 3, .05).name('Playback speed');
@@ -242,10 +254,13 @@ grid.add(P, 'breath', 0, .3, .005).name('Breathing');
 
 const tun = gui.addFolder('Tunnel');
 tun.add(P, 'depth', .05, 1, .01).name('Depth');
+tun.add(P, 'depthGain', 0, 4, .01).name('Depth gained while diving');
 tun.add(P, 'twistBase', 0, 2, .01).name('Twist');
 tun.add(P, 'twistLoad', 0, 2, .01).name('Twist gained while loading');
+tun.add(P, 'twistExit', 0, 8, .01).name('Twist at the end (sucked in)');
 tun.add(P, 'twistAmt', 0, 2, .01).name('Twist strength');
 tun.add(P, 'spin', 0, .6, .005).name('Spin');
+tun.add(P, 'suck', 0, 6, .01).name('Spin at the end (sucked in)');
 tun.add(P, 'travel', 0, 5, .01).name('Travel speed along the walls');
 tun.add(P, 'band', 0, 1, .01).name('Nebula band (where)');
 tun.add(P, 'bandAmp', 0, .6, .01).name('Nebula band (range)');
